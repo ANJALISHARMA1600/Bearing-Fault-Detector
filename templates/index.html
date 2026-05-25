@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bearing Fault Detector</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg: #0b0e1a;
+            --card: #111827;
+            --border: #1f2937;
+            --accent: #38bdf8;
+            --normal: #4ade80;
+            --ball: #fb923c;
+            --inner: #f87171;
+            --outer: #c084fc;
+            --text: #e2e8f0;
+            --muted: #64748b;
+        }
+
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 0;
+        }
+
+        /* ── Top bar ── */
+        .topbar {
+            background: var(--card);
+            border-bottom: 1px solid var(--border);
+            padding: 14px 28px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .topbar-left { display: flex; align-items: center; gap: 12px; }
+
+        .logo {
+            width: 34px; height: 34px;
+            background: var(--accent);
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+        }
+
+        .logo svg { width: 20px; height: 20px; }
+
+        .topbar h1 { font-size: 1.1rem; font-weight: 700; color: var(--text); }
+        .topbar p  { font-size: 0.78rem; color: var(--muted); }
+
+        .status-pill {
+            display: flex; align-items: center; gap: 7px;
+            background: #0f1f0f;
+            border: 1px solid #166534;
+            border-radius: 20px;
+            padding: 5px 14px;
+            font-size: 0.78rem;
+            color: var(--normal);
+        }
+
+        .status-dot {
+            width: 7px; height: 7px;
+            background: var(--normal);
+            border-radius: 50%;
+        }
+
+        .status-dot.live { animation: blink 1s infinite; }
+
+        @keyframes blink {
+            0%,100% { opacity:1; } 50% { opacity:0.2; }
+        }
+
+        /* ── Main grid ── */
+        .main {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            grid-template-rows: auto;
+            gap: 16px;
+            padding: 20px 24px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* ── Cards ── */
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .card-title {
+            font-size: 0.78rem;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 14px;
+        }
+
+        /* ── Left column ── */
+        .left-col {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        /* Upload */
+        .upload-zone {
+            border: 2px dashed var(--border);
+            border-radius: 8px;
+            padding: 24px 16px;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+            margin-bottom: 14px;
+        }
+
+        .upload-zone:hover { border-color: var(--accent); background: #0f1e2e; }
+        .upload-zone p { font-size: 0.82rem; color: var(--muted); margin-top: 8px; }
+
+        input[type="file"] { display: none; }
+
+        .fname {
+            font-size: 0.82rem;
+            color: var(--accent);
+            margin-bottom: 12px;
+            min-height: 18px;
+            word-break: break-all;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 10px;
+            border-radius: 8px;
+            border: none;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .btn-primary { background: var(--accent); color: #0b0e1a; }
+        .btn-primary:hover { background: #7dd3fc; }
+        .btn-primary:disabled { background: var(--border); color: var(--muted); cursor: not-allowed; }
+
+        .btn-danger { background: #ef4444; color: #fff; margin-top: 8px; display: none; }
+        .btn-danger:hover { background: #dc2626; }
+
+        /* Fault indicator */
+        .fault-display {
+            text-align: center;
+            padding: 10px 0;
+        }
+
+        .fault-name {
+            font-size: 1.5rem;
+            font-weight: 800;
+            margin-bottom: 4px;
+            transition: color 0.3s;
+        }
+
+        .fault-conf { font-size: 0.82rem; color: var(--muted); }
+
+        .fault-icon {
+            width: 64px; height: 64px;
+            border-radius: 50%;
+            margin: 0 auto 12px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.6rem;
+            transition: background 0.3s;
+        }
+
+        /* Gauges */
+        .gauges { display: flex; flex-direction: column; gap: 10px; }
+
+        .gauge-row { display: flex; flex-direction: column; gap: 4px; }
+
+        .gauge-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.78rem;
+            color: var(--muted);
+        }
+
+        .gauge-label span:last-child { color: var(--text); font-weight: 600; }
+
+        .gauge-track {
+            height: 6px;
+            background: var(--border);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .gauge-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.4s, background 0.4s;
+        }
+
+        /* ── Right column ── */
+        .right-col {
+            display: grid;
+            grid-template-rows: auto auto auto;
+            gap: 16px;
+        }
+
+        /* Top row — waveform + prediction history */
+        .top-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        /* Charts */
+        .chart-wrap {
+            position: relative;
+            height: 160px;
+        }
+
+        /* Middle row — RMS and Kurtosis charts */
+        .mid-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        /* Bottom row — feature grid */
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+        }
+
+        .feat-card {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px 12px;
+        }
+
+        .feat-name  { font-size: 0.72rem; color: var(--muted); margin-bottom: 3px; }
+        .feat-value { font-size: 1rem; font-weight: 700; color: var(--text); }
+
+        /* History list */
+        .history-list {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            max-height: 160px;
+            overflow-y: auto;
+        }
+
+        .hist-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--bg);
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 0.78rem;
+        }
+
+        .hist-label { font-weight: 700; }
+        .hist-time  { color: var(--muted); font-size: 0.72rem; }
+
+        /* Progress */
+        .prog-wrap {
+            height: 4px;
+            background: var(--border);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+
+        .prog-fill {
+            height: 100%;
+            background: var(--accent);
+            border-radius: 4px;
+            width: 0%;
+            transition: width 0.3s;
+        }
+
+        /* Error / done */
+        .alert {
+            display: none;
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-size: 0.85rem;
+            margin-top: 10px;
+        }
+
+        .alert-error { background: #2c1a1a; border: 1px solid #ef4444; color: #f87171; }
+        .alert-done  { background: #0f1f0f; border: 1px solid #166534; color: var(--normal); }
+
+        /* Window counter */
+        .win-counter {
+            font-size: 0.78rem;
+            color: var(--muted);
+            text-align: right;
+            margin-top: 6px;
+        }
+
+        @media (max-width: 900px) {
+            .main { grid-template-columns: 1fr; }
+            .feature-grid { grid-template-columns: repeat(2,1fr); }
+            .top-row, .mid-row { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Top bar -->
+<div class="topbar">
+    <div class="topbar-left">
+        <div class="logo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#0b0e1a" stroke-width="2.5">
+                <circle cx="12" cy="12" r="9"/>
+                <circle cx="12" cy="12" r="3"/>
+                <line x1="12" y1="3" x2="12" y2="6"/>
+                <line x1="12" y1="18" x2="12" y2="21"/>
+                <line x1="3" y1="12" x2="6" y2="12"/>
+                <line x1="18" y1="12" x2="21" y2="12"/>
+            </svg>
+        </div>
+        <div>
+            <h1>Bearing Fault Detector</h1>
+            <p>Industrial vibration signal analysis dashboard</p>
+        </div>
+    </div>
+    <div class="status-pill">
+        <div class="status-dot" id="statusDot"></div>
+        <span id="statusText">Ready</span>
+    </div>
+</div>
+
+<!-- Main grid -->
+<div class="main">
+
+    <!-- ── Left column ── -->
+    <div class="left-col">
+
+        <!-- Upload card -->
+        <div class="card">
+            <div class="card-title">Signal Input</div>
+            <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+                <svg width="32" height="32" fill="none" stroke="#38bdf8" stroke-width="1.5" viewBox="0 0 24 24">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="17 8 12 3 7 8"/>
+                    <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                <p>Click or drop a .mat file here</p>
+            </div>
+            <input type="file" id="fileInput" accept=".mat">
+            <div class="fname" id="fname">No file selected</div>
+            <button class="btn btn-primary" id="startBtn" onclick="startSim()" disabled>
+                ▶ Start Analysis
+            </button>
+            <button class="btn btn-danger" id="stopBtn" onclick="stopSim()">
+                ■ Stop
+            </button>
+            <div class="alert alert-error" id="errBox"></div>
+            <div class="alert alert-done"  id="doneBox"></div>
+            <div class="prog-wrap"><div class="prog-fill" id="progFill"></div></div>
+            <div class="win-counter" id="winCounter"></div>
+        </div>
+
+        <!-- Fault indicator -->
+        <div class="card">
+            <div class="card-title">Current Diagnosis</div>
+            <div class="fault-display">
+                <div class="fault-icon" id="faultIcon">⚙️</div>
+                <div class="fault-name" id="faultName" style="color:var(--muted)">—</div>
+                <div class="fault-conf" id="faultConf">Upload a file to begin</div>
+            </div>
+        </div>
+
+        <!-- Feature gauges -->
+        <div class="card">
+            <div class="card-title">Signal Gauges</div>
+            <div class="gauges">
+                <div class="gauge-row">
+                    <div class="gauge-label"><span>RMS</span><span id="gRMS">—</span></div>
+                    <div class="gauge-track"><div class="gauge-fill" id="gRMSfill" style="width:0%;background:#38bdf8"></div></div>
+                </div>
+                <div class="gauge-row">
+                    <div class="gauge-label"><span>Kurtosis</span><span id="gKurt">—</span></div>
+                    <div class="gauge-track"><div class="gauge-fill" id="gKurtfill" style="width:0%;background:#c084fc"></div></div>
+                </div>
+                <div class="gauge-row">
+                    <div class="gauge-label"><span>Peak</span><span id="gPeak">—</span></div>
+                    <div class="gauge-track"><div class="gauge-fill" id="gPeakfill" style="width:0%;background:#fb923c"></div></div>
+                </div>
+                <div class="gauge-row">
+                    <div class="gauge-label"><span>Crest Factor</span><span id="gCrest">—</span></div>
+                    <div class="gauge-track"><div class="gauge-fill" id="gCrestfill" style="width:0%;background:#4ade80"></div></div>
+                </div>
+                <div class="gauge-row">
+                    <div class="gauge-label"><span>FFT Peak</span><span id="gFFT">—</span></div>
+                    <div class="gauge-track"><div class="gauge-fill" id="gFFTfill" style="width:0%;background:#f87171"></div></div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ── Right column ── -->
+    <div class="right-col">
+
+        <!-- Top row: waveform + history -->
+        <div class="top-row">
+            <div class="card">
+                <div class="card-title">Signal Waveform — Current Window</div>
+                <div class="chart-wrap">
+                    <canvas id="waveChart"></canvas>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-title">Prediction History</div>
+                <div class="history-list" id="histList">
+                    <div style="color:var(--muted);font-size:0.82rem;text-align:center;padding:20px 0;">
+                        No predictions yet
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mid row: RMS chart + Kurtosis chart -->
+        <div class="mid-row">
+            <div class="card">
+                <div class="card-title">RMS Over Time</div>
+                <div class="chart-wrap">
+                    <canvas id="rmsChart"></canvas>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-title">Kurtosis Over Time</div>
+                <div class="chart-wrap">
+                    <canvas id="kurtChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom row: all features -->
+        <div class="card">
+            <div class="card-title">Extracted Features — Current Window</div>
+            <div class="feature-grid" id="featGrid">
+                <div class="feat-card"><div class="feat-name">mean</div><div class="feat-value" id="f-mean">—</div></div>
+                <div class="feat-card"><div class="feat-name">std</div><div class="feat-value" id="f-std">—</div></div>
+                <div class="feat-card"><div class="feat-name">rms</div><div class="feat-value" id="f-rms">—</div></div>
+                <div class="feat-card"><div class="feat-name">peak</div><div class="feat-value" id="f-peak">—</div></div>
+                <div class="feat-card"><div class="feat-name">kurtosis</div><div class="feat-value" id="f-kurtosis">—</div></div>
+                <div class="feat-card"><div class="feat-name">skewness</div><div class="feat-value" id="f-skewness">—</div></div>
+                <div class="feat-card"><div class="feat-name">crest_factor</div><div class="feat-value" id="f-crest_factor">—</div></div>
+                <div class="feat-card"><div class="feat-name">peak_to_peak</div><div class="feat-value" id="f-peak_to_peak">—</div></div>
+                <div class="feat-card"><div class="feat-name">fft_mean</div><div class="feat-value" id="f-fft_mean">—</div></div>
+                <div class="feat-card"><div class="feat-name">fft_std</div><div class="feat-value" id="f-fft_std">—</div></div>
+                <div class="feat-card"><div class="feat-name">fft_peak</div><div class="feat-value" id="f-fft_peak">—</div></div>
+                <div class="feat-card"><div class="feat-name">window</div><div class="feat-value" id="f-window">—</div></div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+// ── Chart setup ───────────────────────────────────────────────────
+const chartDefaults = {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: false,
+    plugins: { legend: { display: false } },
+    scales: {
+        x: { display: false },
+        y: { ticks: { color: '#64748b', font: { size: 10 } },
+             grid: { color: '#1f2937' } }
+    }
+};
+
+// Waveform chart
+const waveCtx = document.getElementById('waveChart').getContext('2d');
+const waveChart = new Chart(waveCtx, {
+    type: 'line',
+    data: {
+        labels: [],
+        datasets: [{
+            data: [],
+            borderColor: '#38bdf8',
+            borderWidth: 1,
+            pointRadius: 0,
+            tension: 0.1,
+            fill: false
+        }]
+    },
+    options: { ...chartDefaults }
+});
+
+// RMS chart
+const rmsCtx = document.getElementById('rmsChart').getContext('2d');
+const rmsChart = new Chart(rmsCtx, {
+    type: 'line',
+    data: {
+        labels: [],
+        datasets: [{
+            data: [],
+            borderColor: '#38bdf8',
+            backgroundColor: 'rgba(56,189,248,0.08)',
+            borderWidth: 2,
+            pointRadius: 2,
+            fill: true,
+            tension: 0.3
+        }]
+    },
+    options: { ...chartDefaults }
+});
+
+// Kurtosis chart
+const kurtCtx = document.getElementById('kurtChart').getContext('2d');
+const kurtChart = new Chart(kurtCtx, {
+    type: 'line',
+    data: {
+        labels: [],
+        datasets: [{
+            data: [],
+            borderColor: '#c084fc',
+            backgroundColor: 'rgba(192,132,252,0.08)',
+            borderWidth: 2,
+            pointRadius: 2,
+            fill: true,
+            tension: 0.3
+        }]
+    },
+    options: { ...chartDefaults }
+});
+
+const MAX_POINTS = 60;
+
+function pushChart(chart, label, value) {
+    chart.data.labels.push(label);
+    chart.data.datasets[0].data.push(value);
+    if (chart.data.labels.length > MAX_POINTS) {
+        chart.data.labels.shift();
+        chart.data.datasets[0].data.shift();
+    }
+    chart.update('none');
+}
+
+// ── Colors ───────────────────────────────────────────────────────
+const COLORS = {
+    'Normal':     '#4ade80',
+    'Ball':       '#fb923c',
+    'Inner Race': '#f87171',
+    'Outer Race': '#c084fc'
+};
+
+const ICONS = {
+    'Normal':     '✅',
+    'Ball':       '🟠',
+    'Inner Race': '🔴',
+    'Outer Race': '🟣'
+};
+
+// ── File input ───────────────────────────────────────────────────
+const fileInput = document.getElementById('fileInput');
+const uploadZone = document.getElementById('uploadZone');
+
+fileInput.addEventListener('change', function() {
+    if (this.files[0]) {
+        document.getElementById('fname').textContent = this.files[0].name;
+        document.getElementById('startBtn').disabled = false;
+    }
+});
+
+uploadZone.addEventListener('dragover', e => {
+    e.preventDefault();
+    uploadZone.style.borderColor = '#38bdf8';
+});
+
+uploadZone.addEventListener('dragleave', () => {
+    uploadZone.style.borderColor = '';
+});
+
+uploadZone.addEventListener('drop', e => {
+    e.preventDefault();
+    uploadZone.style.borderColor = '';
+    const f = e.dataTransfer.files[0];
+    if (f && f.name.endsWith('.mat')) {
+        fileInput.files = e.dataTransfer.files;
+        document.getElementById('fname').textContent = f.name;
+        document.getElementById('startBtn').disabled = false;
+    }
+});
+
+// ── Simulation ───────────────────────────────────────────────────
+let eventSource = null;
+let totalWindows = 0;
+let storedSignal = null;
+
+async function startSim() {
+    const file = fileInput.files[0];
+    if (!file) return;
+
+    // Reset UI
+    document.getElementById('errBox').style.display = 'none';
+    document.getElementById('doneBox').style.display = 'none';
+    document.getElementById('histList').innerHTML = '';
+    document.getElementById('progFill').style.width = '0%';
+    document.getElementById('winCounter').textContent = '';
+
+    rmsChart.data.labels = [];  rmsChart.data.datasets[0].data = [];  rmsChart.update('none');
+    kurtChart.data.labels = []; kurtChart.data.datasets[0].data = []; kurtChart.update('none');
+    waveChart.data.labels = []; waveChart.data.datasets[0].data = []; waveChart.update('none');
+
+    setStatus('Uploading...', false);
+
+    const fd = new FormData();
+    fd.append('file', file);
+
+    try {
+        const res = await fetch('/simulate', { method: 'POST', body: fd });
+        const data = await res.json();
+
+        if (data.error) {
+            showErr(data.error);
+            setStatus('Error', false);
+            return;
+        }
+
+        totalWindows = data.total_windows;
+        setStatus('Live', true);
+
+        document.getElementById('startBtn').disabled = true;
+        document.getElementById('stopBtn').style.display = 'block';
+
+        // Start SSE
+        eventSource = new EventSource('/stream');
+
+        eventSource.onmessage = function(e) {
+            const d = JSON.parse(e.data);
+
+            if (d.error) { showErr(d.error); stopSim(); return; }
+
+            if (d.done) {
+                stopSim();
+                document.getElementById('doneBox').textContent =
+                    `Analysis complete — ${d.total_windows} windows processed.`;
+                document.getElementById('doneBox').style.display = 'block';
+                setStatus('Done', false);
+                document.getElementById('progFill').style.width = '100%';
+                return;
+            }
+
+            updateDashboard(d);
+        };
+
+        eventSource.onerror = () => stopSim();
+
+    } catch (err) {
+        showErr('Network error: ' + err.message);
+        setStatus('Error', false);
+    }
+}
+
+function stopSim() {
+    if (eventSource) { eventSource.close(); eventSource = null; }
+    document.getElementById('startBtn').disabled = false;
+    document.getElementById('stopBtn').style.display = 'none';
+    if (document.getElementById('statusText').textContent === 'Live') {
+        setStatus('Ready', false);
+    }
+}
+
+function updateDashboard(d) {
+    const color = COLORS[d.prediction] || '#e2e8f0';
+    const icon  = ICONS[d.prediction]  || '⚙️';
+    const f = d.features;
+
+    // Fault indicator
+    document.getElementById('faultIcon').textContent = icon;
+    document.getElementById('faultIcon').style.background = color + '22';
+    const fn = document.getElementById('faultName');
+    fn.style.color = color;
+    fn.textContent = d.prediction === 'Normal' ? 'Normal — Healthy' : d.prediction + ' Fault';
+    document.getElementById('faultConf').textContent =
+        `Confidence: ${d.confidence}% | Window ${d.window + 1} | ${d.time_ms} ms`;
+
+    // Progress
+    const pct = Math.min(((d.window + 1) / totalWindows) * 100, 100);
+    document.getElementById('progFill').style.width = pct + '%';
+    document.getElementById('winCounter').textContent =
+        `Window ${d.window + 1} of ${totalWindows}`;
+
+    // Feature values
+    const featureKeys = ['mean','std','rms','peak','kurtosis','skewness',
+                         'crest_factor','peak_to_peak','fft_mean','fft_std','fft_peak'];
+    featureKeys.forEach(k => {
+        const el = document.getElementById('f-' + k);
+        if (el && f[k] !== undefined) el.textContent = f[k];
+    });
+    document.getElementById('f-window').textContent = d.window + 1;
+
+    // Gauges
+    updateGauge('gRMS',   f.rms,          'gRMSfill',   2.0);
+    updateGauge('gKurt',  f.kurtosis,     'gKurtfill',  15.0);
+    updateGauge('gPeak',  f.peak,         'gPeakfill',  8.0);
+    updateGauge('gCrest', f.crest_factor, 'gCrestfill', 10.0);
+    updateGauge('gFFT',   f.fft_peak,     'gFFTfill',   600.0);
+
+    // RMS + Kurtosis charts
+    pushChart(rmsChart,  d.time_ms, f.rms);
+    pushChart(kurtChart, d.time_ms, f.kurtosis);
+
+    // Waveform — fetch window signal via feature proxy
+    // We approximate waveform using a sine scaled to RMS for visual
+   if (d.waveform) {
+    waveChart.data.labels = d.waveform.map((_, i) => i);
+    waveChart.data.datasets[0].data = d.waveform;
+    waveChart.data.datasets[0].borderColor = color;
+    waveChart.update('none');
+}
+
+    // History
+    const hist = document.getElementById('histList');
+    const item = document.createElement('div');
+    item.className = 'hist-item';
+    item.innerHTML = `
+        <span class="hist-label" style="color:${color}">${d.prediction}</span>
+        <span style="font-size:0.78rem">${d.confidence}%</span>
+        <span class="hist-time">${d.time_ms} ms</span>`;
+    hist.prepend(item);
+
+    // Keep history manageable
+    while (hist.children.length > 50) hist.removeChild(hist.lastChild);
+}
+
+function updateGauge(labelId, value, fillId, max) {
+    document.getElementById(labelId).textContent = typeof value === 'number' ? value.toFixed(3) : '—';
+    const pct = Math.min(Math.abs(value) / max * 100, 100);
+    document.getElementById(fillId).style.width = pct + '%';
+}
+
+function setStatus(text, live) {
+    document.getElementById('statusText').textContent = text;
+    const dot = document.getElementById('statusDot');
+    dot.className = 'status-dot' + (live ? ' live' : '');
+}
+
+function showErr(msg) {
+    const b = document.getElementById('errBox');
+    b.textContent = msg;
+    b.style.display = 'block';
+}
+</script>
+</body>
+</html>
